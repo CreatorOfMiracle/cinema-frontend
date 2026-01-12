@@ -95,7 +95,22 @@ export function BookingsDialog(props: {
 
   const [editing, setEditing] = useState<null | { id: string; fullName: string; tickets: string }>(null);
   const [deleteTarget, setDeleteTarget] = useState<Booking | null>(null);
+  const [moveTarget, setMoveTarget] = useState<Booking | null>(null);
+  const [moveSessionId, setMoveSessionId] = useState<string>("");
   const editingFullNameValid = editing ? isFullNameValid(editing.fullName) : true;
+
+  useEffect(() => {
+    if (!open) return;
+    setFullName("");
+    setTickets("1");
+    setEditing(null);
+  }, [open, session?.id]);
+
+  useEffect(() => {
+    if (!moveTarget) return;
+    const first = sameMovieSessions[0];
+    setMoveSessionId(first?.id ?? "");
+  }, [moveTarget, sameMovieSessions]);
 
   const bookings = bookingsQuery.data?.bookings ?? EMPTY_BOOKINGS;
   const totalTickets = useMemo(() => bookings.reduce((sum, b) => sum + b.tickets, 0), [bookings]);
@@ -160,9 +175,9 @@ export function BookingsDialog(props: {
                         sameMovieSessions={sameMovieSessions}
                         onEdit={() => setEditing({ id: b.id, fullName: b.fullName, tickets: String(b.tickets) })}
                         onDelete={() => setDeleteTarget(b)}
-                        onMove={(targetSessionId) => moveBooking.mutate({ bookingId: b.id, targetSessionId })}
-                      />
-                    ))}
+                      onMove={() => setMoveTarget(b)}
+                    />
+                  ))}
                     {bookings.length === 0 ? (
                       <tr>
                         <td className="px-4 py-6 text-center text-sm text-muted-foreground" colSpan={3}>
@@ -244,6 +259,68 @@ export function BookingsDialog(props: {
           deleteBooking.mutate(targetId);
         }}
       />
+
+      <Dialog
+        open={moveTarget !== null}
+        onOpenChange={(openMove) => {
+          if (!openMove) setMoveTarget(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Перенести бронь</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-lg border bg-muted/30 p-3 text-sm">
+              <div className="font-medium">{moveTarget?.fullName ?? ""}</div>
+              <div className="text-xs text-muted-foreground">
+                Билетов: {moveTarget?.tickets ?? 0}
+              </div>
+            </div>
+
+            <div className="grid gap-2">
+              <Label>Целевой сеанс</Label>
+              <Select
+                value={moveSessionId}
+                onValueChange={setMoveSessionId}
+                disabled={sameMovieSessions.length === 0}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Куда перенести" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sameMovieSessions.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.hall.name} — {new Date(s.startsAt).toLocaleString()}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {sameMovieSessions.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  Нет доступных сеансов с тем же фильмом.
+                </p>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="mt-5 flex flex-wrap justify-end gap-2">
+            <Button variant="secondary" onClick={() => setMoveTarget(null)}>
+              Отмена
+            </Button>
+            <Button
+              onClick={() => {
+                if (!moveTarget || !moveSessionId) return;
+                moveBooking.mutate({ bookingId: moveTarget.id, targetSessionId: moveSessionId });
+                setMoveTarget(null);
+              }}
+              disabled={moveBooking.isPending || !moveSessionId || sameMovieSessions.length === 0}
+            >
+              Перенести
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -253,23 +330,9 @@ function BookingRow(props: {
   sameMovieSessions: Session[];
   onEdit: () => void;
   onDelete: () => void;
-  onMove: (targetSessionId: string) => void;
+  onMove: () => void;
 }) {
   const { booking, sameMovieSessions, onEdit, onDelete, onMove } = props;
-  const [targetSessionId, setTargetSessionId] = useState<string>("");
-
-  useEffect(() => {
-    if (sameMovieSessions.length === 0) {
-      setTargetSessionId("");
-      return;
-    }
-
-    if (!sameMovieSessions.some((s) => s.id === targetSessionId)) {
-      const first = sameMovieSessions[0];
-      if (!first) return;
-      setTargetSessionId(first.id);
-    }
-  }, [sameMovieSessions, targetSessionId]);
 
   return (
     <tr className="hover:bg-muted/30">
@@ -287,30 +350,9 @@ function BookingRow(props: {
             Удалить
           </Button>
 
-          <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
-            <Select value={targetSessionId} onValueChange={setTargetSessionId} disabled={sameMovieSessions.length === 0}>
-              <SelectTrigger className="w-full min-w-[200px] sm:w-[220px]">
-                <SelectValue placeholder="Куда перенести" />
-              </SelectTrigger>
-              <SelectContent>
-                {sameMovieSessions.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.hall.name} — {new Date(s.startsAt).toLocaleString()}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                if (!targetSessionId) return;
-                onMove(targetSessionId);
-              }}
-              disabled={!targetSessionId || sameMovieSessions.length === 0}
-            >
-              Перенести
-            </Button>
-          </div>
+          <Button variant="secondary" onClick={onMove} disabled={sameMovieSessions.length === 0}>
+            Перенести
+          </Button>
         </div>
       </td>
     </tr>

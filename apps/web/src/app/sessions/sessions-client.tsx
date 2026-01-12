@@ -235,7 +235,9 @@ export function SessionsClient() {
                       <div className="text-base font-semibold">{s.movieTitle}</div>
                       <div className="text-xs text-muted-foreground">ID: {s.id}</div>
                     </td>
-                    <td className="px-5 py-4">{formatLocalDateTime(s.startsAt)}</td>
+                    <td className="px-5 py-4">
+                      <span className="whitespace-nowrap">{formatLocalDateTime(s.startsAt)}</span>
+                    </td>
                     <td className="px-5 py-4">
                       {Math.floor(s.durationMinutes / 60)}ч {s.durationMinutes % 60}м
                     </td>
