@@ -42,12 +42,22 @@ async function http<T>(path: string, init?: RequestInit, schema?: z.ZodSchema<T>
     const text = await res.text();
     try {
       const json = JSON.parse(text) as unknown;
+      if (typeof json === "string") {
+        const nested = JSON.parse(json) as unknown;
+        const parsedNested = apiErrorSchema.safeParse(nested);
+        if (parsedNested.success) throw new Error(parsedNested.data.error.message);
+      }
       const parsed = apiErrorSchema.safeParse(json);
       if (parsed.success) throw new Error(parsed.data.error.message);
     } catch {
       // ignore
     }
-    throw new Error(text || `HTTP ${res.status}`);
+
+    const messageMatch = text.match(/"message"\s*:\s*"([^"]+)"/);
+    if (messageMatch?.[1]) {
+      throw new Error(messageMatch[1]);
+    }
+    throw new Error(text || "Не удалось выполнить запрос");
   }
 
   const data = (await res.json()) as unknown;

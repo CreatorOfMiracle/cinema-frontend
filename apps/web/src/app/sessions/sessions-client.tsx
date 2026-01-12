@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -69,11 +70,21 @@ export function SessionsClient() {
   const [createForm, setCreateForm] = useState<SessionFormState>(() => emptySessionForm(halls));
   const [editForm, setEditForm] = useState<SessionFormState>(() => emptySessionForm(halls));
   const [editId, setEditId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Session | null>(null);
 
   const sameMovieSessions = useMemo(() => {
     if (!selectedSession) return [];
     return sessions.filter((s) => s.movieTitle === selectedSession.movieTitle && s.id !== selectedSession.id);
   }, [selectedSession, sessions]);
+
+  const totalBookings = useMemo(
+    () => sessions.reduce((sum, session) => sum + (session.bookingsCount ?? 0), 0),
+    [sessions],
+  );
+  const totalTickets = useMemo(
+    () => sessions.reduce((sum, session) => sum + (session.bookedTickets ?? 0), 0),
+    [sessions],
+  );
 
   const createSession = useMutation({
     mutationFn: async (state: SessionFormState) => {
@@ -144,28 +155,34 @@ export function SessionsClient() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">Сеансы</h1>
-          <p className="text-sm text-muted-foreground">Добавляй, редактируй и управляй бронями.</p>
-        </div>
+      <div className="rounded-2xl border bg-gradient-to-br from-slate-50 via-white to-slate-100 p-6 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold">Сеансы</h1>
+          </div>
 
-        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogTrigger asChild>
-            <Button onClick={onOpenCreate} disabled={halls.length === 0}>
-              Добавить сеанс
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-xl">
-            <DialogHeader>
-              <DialogTitle>Новый сеанс</DialogTitle>
-            </DialogHeader>
-            <SessionForm halls={halls} state={createForm} onChange={setCreateForm} />
-            <div className="flex justify-end gap-2">
-              <Button variant="secondary" onClick={() => setCreateOpen(false)}>
+          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+            <DialogTrigger asChild>
+              <Button onClick={onOpenCreate} disabled={halls.length === 0}>
+                Добавить сеанс
+              </Button>
+            </DialogTrigger>
+          <DialogContent className="sm:max-w-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <DialogHeader>
+                <DialogTitle className="text-2xl">Новый сеанс</DialogTitle>
+                <p className="text-sm text-muted-foreground">Заполни параметры показа и выбери зал.</p>
+              </DialogHeader>
+            </div>
+            <div className="mt-4 rounded-2xl border bg-muted/20 p-4">
+              <SessionForm halls={halls} state={createForm} onChange={setCreateForm} />
+            </div>
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <Button className="w-full sm:w-auto" variant="secondary" onClick={() => setCreateOpen(false)}>
                 Отмена
               </Button>
               <Button
+                className="w-full sm:w-auto"
                 onClick={() => createSession.mutate(createForm)}
                 disabled={createSession.isPending || !isSessionFormValid(createForm)}
               >
@@ -176,84 +193,111 @@ export function SessionsClient() {
         </Dialog>
       </div>
 
+        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+          <div className="rounded-xl border bg-white/70 p-4">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">Всего сеансов</div>
+            <div className="mt-2 text-2xl font-semibold">{sessions.length}</div>
+          </div>
+          <div className="rounded-xl border bg-white/70 p-4">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">Залов доступно</div>
+            <div className="mt-2 text-2xl font-semibold">{halls.length}</div>
+          </div>
+          <div className="rounded-xl border bg-white/70 p-4">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">Билетов продано</div>
+            <div className="mt-2 text-2xl font-semibold">{totalTickets}</div>
+            <div className="text-xs text-muted-foreground">Броней: {totalBookings}</div>
+          </div>
+        </div>
+      </div>
+
       {hallsQuery.isLoading || sessionsQuery.isLoading ? (
         <div className="text-sm text-muted-foreground">Загрузка…</div>
       ) : hallsQuery.isError || sessionsQuery.isError ? (
         <div className="text-sm text-destructive">Ошибка загрузки данных</div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50">
-              <tr className="[&>th]:px-4 [&>th]:py-3 [&>th]:text-left [&>th]:font-medium">
+        <div className="overflow-hidden rounded-2xl border bg-white">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/60">
+                <tr className="[&>th]:px-5 [&>th]:py-4 [&>th]:text-left [&>th]:font-medium">
                 <th>Фильм</th>
                 <th>Начало</th>
                 <th>Длительность</th>
                 <th>Зал</th>
                 <th>Брони</th>
                 <th className="w-[1%]"></th>
-              </tr>
-            </thead>
-            <tbody className="[&>tr]:border-t">
-              {sessions.map((s) => (
-                <tr key={s.id} className="hover:bg-muted/30">
-                  <td className="px-4 py-3">
-                    <div className="font-medium">{s.movieTitle}</div>
-                    <div className="text-xs text-muted-foreground">ID: {s.id}</div>
-                  </td>
-                  <td className="px-4 py-3">{formatLocalDateTime(s.startsAt)}</td>
-                  <td className="px-4 py-3">
-                    {Math.floor(s.durationMinutes / 60)}ч {s.durationMinutes % 60}м
-                  </td>
-                  <td className="px-4 py-3">
-                    <div>{s.hall.name}</div>
-                    <div className="text-xs text-muted-foreground">ID: {s.hall.id}</div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div>{s.bookingsCount ?? 0} шт.</div>
-                    <div className="text-xs text-muted-foreground">{s.bookedTickets ?? 0} бил.</div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex justify-end gap-2">
-                      <Button variant="secondary" onClick={() => setSelectedSession(s)}>
-                        Брони
-                      </Button>
-                      <Button variant="secondary" onClick={() => onOpenEdit(s)}>
-                        Изменить
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        onClick={() => deleteSession.mutate(s.id)}
-                        disabled={deleteSession.isPending}
-                      >
-                        Удалить
-                      </Button>
-                    </div>
-                  </td>
                 </tr>
-              ))}
-              {sessions.length === 0 ? (
-                <tr>
-                  <td className="px-4 py-6 text-center text-sm text-muted-foreground" colSpan={6}>
-                    Сеансов пока нет
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="[&>tr]:border-t [&>tr]:border-muted/60">
+                {sessions.map((s) => (
+                  <tr key={s.id} className="group hover:bg-muted/30">
+                    <td className="px-5 py-4">
+                      <div className="text-base font-semibold">{s.movieTitle}</div>
+                      <div className="text-xs text-muted-foreground">ID: {s.id}</div>
+                    </td>
+                    <td className="px-5 py-4">{formatLocalDateTime(s.startsAt)}</td>
+                    <td className="px-5 py-4">
+                      {Math.floor(s.durationMinutes / 60)}ч {s.durationMinutes % 60}м
+                    </td>
+                    <td className="px-5 py-4">
+                      <div>{s.hall.name}</div>
+                      <div className="text-xs text-muted-foreground">ID: {s.hall.id}</div>
+                    </td>
+                    <td className="px-5 py-4">
+                      <div className="text-base font-semibold">{s.bookedTickets ?? 0} бил.</div>
+                      <div className="text-xs text-muted-foreground">Броней: {s.bookingsCount ?? 0}</div>
+                    </td>
+                    <td className="px-5 py-4">
+                      <div className="flex flex-col items-end gap-2 md:flex-row md:items-center md:justify-end">
+                        <Button size="sm" variant="secondary" className="w-full md:w-auto" onClick={() => setSelectedSession(s)}>
+                          Брони
+                        </Button>
+                        <Button size="sm" variant="secondary" className="w-full md:w-auto" onClick={() => onOpenEdit(s)}>
+                          Изменить
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          className="w-full md:w-auto"
+                          onClick={() => setDeleteTarget(s)}
+                          disabled={deleteSession.isPending}
+                        >
+                          Удалить
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {sessions.length === 0 ? (
+                  <tr>
+                    <td className="px-5 py-10 text-center text-sm text-muted-foreground" colSpan={6}>
+                      Сеансов пока нет
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="sm:max-w-xl">
-          <DialogHeader>
-            <DialogTitle>Редактирование сеанса</DialogTitle>
-          </DialogHeader>
-          <SessionForm halls={halls} state={editForm} onChange={setEditForm} />
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setEditOpen(false)}>
+        <DialogContent className="sm:max-w-2xl">
+          <div className="flex items-start justify-between gap-4">
+            <DialogHeader>
+              <DialogTitle className="text-2xl">Редактирование сеанса</DialogTitle>
+              <p className="text-sm text-muted-foreground">Обнови расписание, зал или длительность.</p>
+            </DialogHeader>
+          </div>
+          <div className="mt-4 rounded-2xl border bg-muted/20 p-4">
+            <SessionForm halls={halls} state={editForm} onChange={setEditForm} />
+          </div>
+          <div className="mt-5 flex flex-wrap justify-end gap-2">
+            <Button className="w-full sm:w-auto" variant="secondary" onClick={() => setEditOpen(false)}>
               Отмена
             </Button>
             <Button
+              className="w-full sm:w-auto"
               onClick={() => {
                 if (!editId) return;
                 updateSession.mutate({ id: editId, state: editForm });
@@ -273,6 +317,27 @@ export function SessionsClient() {
         }}
         session={selectedSession}
         sameMovieSessions={sameMovieSessions}
+      />
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title="Удалить сеанс?"
+        description={
+          deleteTarget
+            ? `Сеанс «${deleteTarget.movieTitle}» будет удален вместе с бронями.`
+            : undefined
+        }
+        confirmLabel="Удалить"
+        confirmDisabled={deleteSession.isPending}
+        onConfirm={() => {
+          if (!deleteTarget) return;
+          const targetId = deleteTarget.id;
+          setDeleteTarget(null);
+          deleteSession.mutate(targetId);
+        }}
       />
     </div>
   );

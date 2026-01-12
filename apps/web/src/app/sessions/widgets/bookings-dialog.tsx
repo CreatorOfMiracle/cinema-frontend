@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { api, type Booking, type Session } from "@/lib/api";
 
 const EMPTY_BOOKINGS: Booking[] = [];
+const isFullNameValid = (value: string) => value.trim().split(/\s+/).filter(Boolean).length === 3;
 
 export function BookingsDialog(props: {
   open: boolean;
@@ -32,10 +34,12 @@ export function BookingsDialog(props: {
 
   const [fullName, setFullName] = useState("");
   const [tickets, setTickets] = useState("1");
+  const fullNameValid = isFullNameValid(fullName);
 
   const createBooking = useMutation({
     mutationFn: async () => {
       if (!session) throw new Error("No session");
+      if (!fullNameValid) throw new Error("ФИО должно содержать 3 слова");
       return api.createBooking({ sessionId: session.id, fullName, tickets: Number(tickets) });
     },
     onSuccess: async () => {
@@ -90,126 +94,157 @@ export function BookingsDialog(props: {
   });
 
   const [editing, setEditing] = useState<null | { id: string; fullName: string; tickets: string }>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Booking | null>(null);
+  const editingFullNameValid = editing ? isFullNameValid(editing.fullName) : true;
 
   const bookings = bookingsQuery.data?.bookings ?? EMPTY_BOOKINGS;
   const totalTickets = useMemo(() => bookings.reduce((sum, b) => sum + b.tickets, 0), [bookings]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>
-            Брони — {session?.movieTitle ?? ""} {session ? `(${session.hall.name})` : ""}
-          </DialogTitle>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>
+              Брони — {session?.movieTitle ?? ""} {session ? `(${session.hall.name})` : ""}
+            </DialogTitle>
+          </DialogHeader>
 
-        {!session ? null : (
-          <div className="space-y-6">
-            <div className="rounded-lg border p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <div className="text-sm font-medium">Добавить бронь</div>
-                <div className="text-xs text-muted-foreground">Всего забронировано: {totalTickets}</div>
-              </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {!session ? null : (
+            <div className="space-y-6">
+              <div className="rounded-lg border p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="text-sm font-medium">Добавить бронь</div>
+                  <div className="text-xs text-muted-foreground">Всего забронировано: {totalTickets}</div>
+                </div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <div className="grid gap-2 sm:col-span-2">
                   <Label htmlFor="fullName">ФИО</Label>
                   <Input id="fullName" value={fullName} onChange={(e) => setFullName(e.target.value)} />
+                  {fullName.length > 0 && !fullNameValid ? (
+                    <p className="text-xs text-destructive">Введите фамилию, имя и отчество.</p>
+                  ) : null}
                 </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="tickets">Билеты</Label>
-                  <Input
-                    id="tickets"
-                    type="number"
-                    min={1}
-                    value={tickets}
-                    onChange={(e) => setTickets(e.target.value)}
-                  />
+                  <div className="grid gap-2">
+                    <Label htmlFor="tickets">Билеты</Label>
+                    <Input
+                      id="tickets"
+                      type="number"
+                      min={1}
+                      value={tickets}
+                      onChange={(e) => setTickets(e.target.value)}
+                    />
+                  </div>
                 </div>
-              </div>
               <div className="mt-4 flex justify-end">
-                <Button onClick={() => createBooking.mutate()} disabled={createBooking.isPending}>
+                <Button onClick={() => createBooking.mutate()} disabled={createBooking.isPending || !fullNameValid}>
                   Сохранить
                 </Button>
               </div>
-            </div>
+              </div>
 
-            <div className="overflow-x-auto rounded-lg border">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/50">
-                  <tr className="[&>th]:px-4 [&>th]:py-3 [&>th]:text-left [&>th]:font-medium">
-                    <th>ФИО</th>
-                    <th>Билеты</th>
-                    <th className="w-[1%]"></th>
-                  </tr>
-                </thead>
-                <tbody className="[&>tr]:border-t">
-                  {bookings.map((b) => (
-                    <BookingRow
-                      key={b.id}
-                      booking={b}
-                      sameMovieSessions={sameMovieSessions}
-                      onEdit={() => setEditing({ id: b.id, fullName: b.fullName, tickets: String(b.tickets) })}
-                      onDelete={() => deleteBooking.mutate(b.id)}
-                      onMove={(targetSessionId) => moveBooking.mutate({ bookingId: b.id, targetSessionId })}
-                    />
-                  ))}
-                  {bookings.length === 0 ? (
-                    <tr>
-                      <td className="px-4 py-6 text-center text-sm text-muted-foreground" colSpan={3}>
-                        Броней пока нет
-                      </td>
+              <div className="overflow-x-auto rounded-lg border">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50">
+                    <tr className="[&>th]:px-4 [&>th]:py-3 [&>th]:text-left [&>th]:font-medium">
+                      <th>ФИО</th>
+                      <th>Билеты</th>
+                      <th className="w-[1%]"></th>
                     </tr>
-                  ) : null}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="[&>tr]:border-t">
+                    {bookings.map((b) => (
+                      <BookingRow
+                        key={b.id}
+                        booking={b}
+                        sameMovieSessions={sameMovieSessions}
+                        onEdit={() => setEditing({ id: b.id, fullName: b.fullName, tickets: String(b.tickets) })}
+                        onDelete={() => setDeleteTarget(b)}
+                        onMove={(targetSessionId) => moveBooking.mutate({ bookingId: b.id, targetSessionId })}
+                      />
+                    ))}
+                    {bookings.length === 0 ? (
+                      <tr>
+                        <td className="px-4 py-6 text-center text-sm text-muted-foreground" colSpan={3}>
+                          Броней пока нет
+                        </td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
 
-            {editing ? (
-              <div className="rounded-lg border p-4">
-                <div className="mb-3 text-sm font-medium">Редактировать бронь</div>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                  <div className="grid gap-2 sm:col-span-2">
-                    <Label htmlFor="editFullName">ФИО</Label>
-                    <Input
-                      id="editFullName"
-                      value={editing.fullName}
-                      onChange={(e) => setEditing({ ...editing, fullName: e.target.value })}
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="editTickets">Билеты</Label>
-                    <Input
-                      id="editTickets"
-                      type="number"
-                      min={1}
-                      value={editing.tickets}
-                      onChange={(e) => setEditing({ ...editing, tickets: e.target.value })}
-                    />
-                  </div>
+              {editing ? (
+                <div className="rounded-lg border p-4">
+                  <div className="mb-3 text-sm font-medium">Редактировать бронь</div>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    <div className="grid gap-2 sm:col-span-2">
+                  <Label htmlFor="editFullName">ФИО</Label>
+                  <Input
+                    id="editFullName"
+                    value={editing.fullName}
+                    onChange={(e) => setEditing({ ...editing, fullName: e.target.value })}
+                  />
+                  {editing.fullName.length > 0 && !editingFullNameValid ? (
+                    <p className="text-xs text-destructive">Введите фамилию, имя и отчество.</p>
+                  ) : null}
                 </div>
-                <div className="mt-4 flex justify-end gap-2">
-                  <Button variant="secondary" onClick={() => setEditing(null)}>
-                    Отмена
-                  </Button>
-                  <Button
-                    onClick={() =>
-                      updateBooking.mutate({
-                        id: editing.id,
-                        fullName: editing.fullName,
-                        tickets: Number(editing.tickets),
-                      })
-                    }
-                    disabled={updateBooking.isPending}
+                    <div className="grid gap-2">
+                      <Label htmlFor="editTickets">Билеты</Label>
+                      <Input
+                        id="editTickets"
+                        type="number"
+                        min={1}
+                        value={editing.tickets}
+                        onChange={(e) => setEditing({ ...editing, tickets: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-4 flex justify-end gap-2">
+                    <Button variant="secondary" onClick={() => setEditing(null)}>
+                      Отмена
+                    </Button>
+                    <Button
+                      onClick={() =>
+                        updateBooking.mutate({
+                          id: editing.id,
+                          fullName: editing.fullName,
+                          tickets: Number(editing.tickets),
+                        })
+                      }
+                    disabled={updateBooking.isPending || !editingFullNameValid}
                   >
                     Сохранить
                   </Button>
+                  </div>
                 </div>
-              </div>
-            ) : null}
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
+              ) : null}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title="Удалить бронь?"
+        description={
+          deleteTarget
+            ? `Удалить бронь «${deleteTarget.fullName}» на ${deleteTarget.tickets} бил.?`
+            : undefined
+        }
+        confirmLabel="Удалить"
+        confirmDisabled={deleteBooking.isPending}
+        onConfirm={() => {
+          if (!deleteTarget) return;
+          const targetId = deleteTarget.id;
+          setDeleteTarget(null);
+          deleteBooking.mutate(targetId);
+        }}
+      />
+    </>
   );
 }
 
@@ -221,7 +256,20 @@ function BookingRow(props: {
   onMove: (targetSessionId: string) => void;
 }) {
   const { booking, sameMovieSessions, onEdit, onDelete, onMove } = props;
-  const [targetSessionId, setTargetSessionId] = useState<string>(sameMovieSessions[0]?.id ?? "");
+  const [targetSessionId, setTargetSessionId] = useState<string>("");
+
+  useEffect(() => {
+    if (sameMovieSessions.length === 0) {
+      setTargetSessionId("");
+      return;
+    }
+
+    if (!sameMovieSessions.some((s) => s.id === targetSessionId)) {
+      const first = sameMovieSessions[0];
+      if (!first) return;
+      setTargetSessionId(first.id);
+    }
+  }, [sameMovieSessions, targetSessionId]);
 
   return (
     <tr className="hover:bg-muted/30">
@@ -231,7 +279,7 @@ function BookingRow(props: {
       </td>
       <td className="px-4 py-3">{booking.tickets}</td>
       <td className="px-4 py-3">
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
           <Button variant="secondary" onClick={onEdit}>
             Изменить
           </Button>
@@ -239,9 +287,9 @@ function BookingRow(props: {
             Удалить
           </Button>
 
-          <div className="flex items-center gap-2">
+          <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
             <Select value={targetSessionId} onValueChange={setTargetSessionId} disabled={sameMovieSessions.length === 0}>
-              <SelectTrigger className="w-[220px]">
+              <SelectTrigger className="w-full min-w-[200px] sm:w-[220px]">
                 <SelectValue placeholder="Куда перенести" />
               </SelectTrigger>
               <SelectContent>
