@@ -10,6 +10,7 @@
 *.userosscache
 *.sln.docstates
 *.env
+.env.*
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
@@ -198,6 +199,24 @@ publish/
 # Publish Web Output
 *.[Pp]ublish.xml
 *.azurePubxml
+
+# --- Node / Next.js ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+.next/
+out/
+dist/
+coverage/
+.turbo/
+.vercel/
+
+# --- Database files (backend repo) ---
+*.db
+*.db-journal
 # Note: Comment the next line if you want to checkin your web deploy settings,
 # but database connection strings (with potential passwords) will be unencrypted
 *.pubxml
@@ -417,4 +436,4 @@ FodyWeavers.xsd
 *.msm
 *.msp
 
-AGENTS.md
+*.md
